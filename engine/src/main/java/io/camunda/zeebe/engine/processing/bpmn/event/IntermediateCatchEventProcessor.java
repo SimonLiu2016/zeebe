@@ -70,7 +70,8 @@ public class IntermediateCatchEventProcessor
     eventSubscriptionBehavior.unsubscribeFromEvents(terminating);
     incidentBehavior.resolveIncidents(terminating);
 
-    final var terminated = stateTransitionBehavior.transitionToTerminated(terminating);
+    final var terminated =
+        stateTransitionBehavior.transitionToTerminated(terminating, element.getEventType());
     stateTransitionBehavior.onElementTerminated(element, terminated);
   }
 
@@ -106,7 +107,8 @@ public class IntermediateCatchEventProcessor
           .applyInputMappings(activating, element)
           .flatMap(ok -> eventSubscriptionBehavior.subscribeToEvents(element, activating))
           .ifRightOrLeft(
-              ok -> stateTransitionBehavior.transitionToActivated(activating),
+              ok ->
+                  stateTransitionBehavior.transitionToActivated(activating, element.getEventType()),
               failure -> incidentBehavior.createIncident(failure, activating));
     }
   }
@@ -121,7 +123,8 @@ public class IntermediateCatchEventProcessor
     @Override
     public void onActivate(
         final ExecutableCatchEventElement element, final BpmnElementContext activating) {
-      final var activated = stateTransitionBehavior.transitionToActivated(activating);
+      final var activated =
+          stateTransitionBehavior.transitionToActivated(activating, element.getEventType());
       stateTransitionBehavior.completeElement(activated);
     }
   }

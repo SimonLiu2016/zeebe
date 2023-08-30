@@ -53,7 +53,7 @@ public final class JobWorkerTaskProcessor implements BpmnElementProcessor<Execut
         .flatMap(ok -> eventSubscriptionBehavior.subscribeToEvents(element, context))
         .flatMap(ok -> jobBehavior.createNewJob(context, element))
         .ifRightOrLeft(
-            ok -> stateTransitionBehavior.transitionToActivated(context),
+            ok -> stateTransitionBehavior.transitionToActivated(context, element.getEventType()),
             failure -> incidentBehavior.createIncident(failure, context));
   }
 
@@ -85,7 +85,8 @@ public final class JobWorkerTaskProcessor implements BpmnElementProcessor<Execut
         .filter(eventTrigger -> !flowScopeInstance.isInterrupted())
         .ifPresentOrElse(
             eventTrigger -> {
-              final var terminated = stateTransitionBehavior.transitionToTerminated(context);
+              final var terminated =
+                  stateTransitionBehavior.transitionToTerminated(context, element.getEventType());
               eventSubscriptionBehavior.activateTriggeredEvent(
                   context.getElementInstanceKey(),
                   terminated.getFlowScopeKey(),
@@ -93,7 +94,8 @@ public final class JobWorkerTaskProcessor implements BpmnElementProcessor<Execut
                   terminated);
             },
             () -> {
-              final var terminated = stateTransitionBehavior.transitionToTerminated(context);
+              final var terminated =
+                  stateTransitionBehavior.transitionToTerminated(context, element.getEventType());
               stateTransitionBehavior.onElementTerminated(element, terminated);
             });
   }
