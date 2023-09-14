@@ -20,6 +20,7 @@ import io.camunda.zeebe.gateway.impl.configuration.MultiTenancyCfg;
 import io.camunda.zeebe.gateway.impl.job.ActivateJobsHandler;
 import io.camunda.zeebe.gateway.impl.job.LongPollingActivateJobsHandler;
 import io.camunda.zeebe.gateway.impl.job.RoundRobinActivateJobsHandler;
+import io.camunda.zeebe.gateway.impl.stream.ClientStreamAdapter;
 import io.camunda.zeebe.gateway.interceptors.impl.IdentityInterceptor;
 import io.camunda.zeebe.gateway.protocol.GatewayGrpc;
 import io.camunda.zeebe.gateway.protocol.GatewayGrpc.GatewayBlockingStub;
@@ -79,11 +80,16 @@ public final class StubbedGateway {
   public void start() throws IOException {
     final var activateJobsHandler = buildActivateJobsHandler(brokerClient);
     submitActorToActivateJobs(activateJobsHandler);
+    final var clientStreamAdapter = new ClientStreamAdapter(jobStreamer);
+    actorScheduler.submitActor(clientStreamAdapter).join();
 
     final MultiTenancyCfg multiTenancy = config.getMultiTenancy();
     final EndpointManager endpointManager =
         new EndpointManager(
-            brokerClient, activateJobsHandler, jobStreamer, actorScheduler, Runnable::run, multiTenancy);
+            brokerClient,
+            activateJobsHandler,
+            clientStreamAdapter,
+            multiTenancy);
     final GatewayGrpcService gatewayGrpcService = new GatewayGrpcService(endpointManager);
 
     final InProcessServerBuilder serverBuilder =

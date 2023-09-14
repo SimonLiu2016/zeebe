@@ -16,8 +16,9 @@ import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.StreamActivatedJobsRe
 import io.camunda.zeebe.protocol.impl.stream.job.ActivatedJobImpl;
 import io.camunda.zeebe.protocol.impl.stream.job.JobActivationProperties;
 import io.camunda.zeebe.scheduler.Actor;
-import io.camunda.zeebe.scheduler.ActorSchedulingService;
+import io.camunda.zeebe.scheduler.ConcurrencyControl;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
+import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
 import io.camunda.zeebe.transport.stream.api.ClientStreamConsumer;
 import io.camunda.zeebe.transport.stream.api.ClientStreamId;
 import io.camunda.zeebe.transport.stream.api.ClientStreamer;
@@ -27,24 +28,16 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
-import java.util.concurrent.Executor;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import net.jcip.annotations.GuardedBy;
 import org.agrona.DirectBuffer;
 
-public class ClientStreamAdapter {
+public class ClientStreamAdapter extends Actor {
   private final ClientStreamer<JobActivationProperties> jobStreamer;
-  private final ActorSchedulingService scheduler;
-  private final Executor executor;
 
-  public ClientStreamAdapter(
-      final ClientStreamer<JobActivationProperties> jobStreamer,
-      final ActorSchedulingService scheduler,
-      final Executor executor) {
+  public ClientStreamAdapter(final ClientStreamer<JobActivationProperties> jobStreamer) {
     this.jobStreamer = jobStreamer;
-    this.scheduler = scheduler;
-    this.executor = executor;
   }
 
   public void handle(
@@ -68,7 +61,7 @@ public class ClientStreamAdapter {
       final ServerCallStreamObserver<ActivatedJob> responseObserver) {
     final var jobActivationProperties = toJobActivationProperties(request);
     final var streamType = wrapString(request.getType());
-    final var consumer = new ClientStreamConsumerImpl(responseObserver);
+    final var consumer = new ClientStreamConsumerImpl(responseObserver, actor);
     final var cleaner = new AsyncJobStreamRemover(jobStreamer);
 
     // setting the handlers has to be done before the call is started, so we cannot do it in the
@@ -76,16 +69,8 @@ public class ClientStreamAdapter {
     responseObserver.setOnCloseHandler(cleaner);
     responseObserver.setOnCancelHandler(cleaner);
 
-    scheduler
-        .submitActor(consumer)
-        .onComplete(
-            (ok, error) -> {
-              cleaner.onActorStarted(consumer);
-              jobStreamer
-                  .add(streamType, jobActivationProperties, consumer)
-                  .onComplete(cleaner::onStreamAdded, executor);
-            },
-            executor);
+    actor.runOnCompletion(
+        jobStreamer.add(streamType, jobActivationProperties, consumer), cleaner::onStreamAdded);
   }
 
   private void handleError(
@@ -100,16 +85,29 @@ public class ClientStreamAdapter {
   }
 
   @VisibleForTesting("Allow unit testing behavior job handling behavior")
-  static final class ClientStreamConsumerImpl extends Actor implements ClientStreamConsumer {
+  static final class ClientStreamConsumerImpl implements ClientStreamConsumer {
     private final StreamObserver<ActivatedJob> responseObserver;
+    private final ConcurrencyControl executor;
 
-    ClientStreamConsumerImpl(final StreamObserver<ActivatedJob> responseObserver) {
+    ClientStreamConsumerImpl(
+        final StreamObserver<ActivatedJob> responseObserver, final ConcurrencyControl executor) {
       this.responseObserver = responseObserver;
+      this.executor = executor;
     }
 
     @Override
     public ActorFuture<Void> push(final DirectBuffer payload) {
-      return actor.call(() -> handlePushedJob(payload));
+      try {
+        return executor.call(
+            () -> {
+              handlePushedJob(payload);
+              return null;
+            });
+      } catch (final Exception e) {
+        // in case the actor is closed
+        responseObserver.onError(e);
+        return CompletableActorFuture.completedExceptionally(e);
+      }
     }
 
     private void handlePushedJob(final DirectBuffer payload) {
@@ -123,16 +121,6 @@ public class ClientStreamAdapter {
         throw e;
       }
     }
-
-    @Override
-    protected void onActorClosing() {
-      responseObserver.onCompleted();
-    }
-
-    @Override
-    protected void handleFailure(final Throwable failure) {
-      responseObserver.onError(failure);
-    }
   }
 
   private static final class AsyncJobStreamRemover implements Runnable {
@@ -144,9 +132,6 @@ public class ClientStreamAdapter {
 
     @GuardedBy("lock")
     private ClientStreamId streamId;
-
-    @GuardedBy("lock")
-    private ClientStreamConsumerImpl consumer;
 
     private AsyncJobStreamRemover(final ClientStreamer<JobActivationProperties> jobStreamer) {
       this.jobStreamer = jobStreamer;
@@ -161,30 +146,12 @@ public class ClientStreamAdapter {
       LockUtil.withLock(lock, () -> lockedOnStreamAdded(streamId));
     }
 
-    private void onActorStarted(final ClientStreamConsumerImpl consumer) {
-      LockUtil.withLock(lock, () -> lockedOnActorStarted(consumer));
-    }
-
-    @GuardedBy("lock")
-    private void lockedOnActorStarted(final ClientStreamConsumerImpl consumer) {
-      if (isRemoved) {
-        consumer.closeAsync();
-        return;
-      }
-
-      this.consumer = consumer;
-    }
-
     @GuardedBy("lock")
     private void lockedRemove() {
       isRemoved = true;
 
       if (streamId != null) {
         jobStreamer.remove(streamId);
-      }
-
-      if (consumer != null) {
-        consumer.closeAsync();
       }
     }
 

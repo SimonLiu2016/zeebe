@@ -63,10 +63,7 @@ import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.ThrowErrorResponse;
 import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.TopologyResponse;
 import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.UpdateJobRetriesRequest;
 import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.UpdateJobRetriesResponse;
-import io.camunda.zeebe.protocol.impl.stream.job.JobActivationProperties;
 import io.camunda.zeebe.protocol.record.value.TenantOwned;
-import io.camunda.zeebe.scheduler.ActorSchedulingService;
-import io.camunda.zeebe.transport.stream.api.ClientStreamer;
 import io.camunda.zeebe.util.VersionUtil;
 import io.grpc.Context;
 import io.grpc.stub.ServerCallStreamObserver;
@@ -74,7 +71,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Executor;
 import java.util.function.Function;
 
 public final class EndpointManager {
@@ -89,14 +85,11 @@ public final class EndpointManager {
   public EndpointManager(
       final BrokerClient brokerClient,
       final ActivateJobsHandler activateJobsHandler,
-      final ClientStreamer<JobActivationProperties> jobStreamer,
-      final ActorSchedulingService scheduler,
-      final Executor executor,
+      final ClientStreamAdapter clientStreamAdapter,
       final MultiTenancyCfg multiTenancy) {
     this.brokerClient = brokerClient;
     this.activateJobsHandler = activateJobsHandler;
-
-    clientStreamAdapter = new ClientStreamAdapter(jobStreamer, scheduler, executor);
+    this.clientStreamAdapter = clientStreamAdapter;
     topologyManager = brokerClient.getTopologyManager();
     requestRetryHandler = new RequestRetryHandler(brokerClient, topologyManager);
     this.multiTenancy = multiTenancy;
