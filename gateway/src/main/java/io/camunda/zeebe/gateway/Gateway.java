@@ -125,6 +125,7 @@ public final class Gateway implements CloseableSilently {
   private CompletionStage<ClientStreamAdapter> startClientStreamAdapter() {
     final var adapter = new ClientStreamAdapter(jobStreamer);
     final var future = new CompletableFuture<ClientStreamAdapter>();
+
     actorSchedulingService
         .submitActor(adapter)
         .onComplete(
@@ -136,7 +137,7 @@ public final class Gateway implements CloseableSilently {
 
               future.complete(adapter);
             },
-            grpcExecutor);
+            ForkJoinPool.commonPool());
 
     return future;
   }
