@@ -69,8 +69,11 @@ public class ClientStreamAdapter extends Actor {
     responseObserver.setOnCloseHandler(cleaner);
     responseObserver.setOnCancelHandler(cleaner);
 
-    actor.runOnCompletion(
-        jobStreamer.add(streamType, jobActivationProperties, consumer), cleaner::onStreamAdded);
+    actor.run(
+        () ->
+            actor.runOnCompletion(
+                jobStreamer.add(streamType, jobActivationProperties, consumer),
+                cleaner::onStreamAdded));
   }
 
   private void handleError(
