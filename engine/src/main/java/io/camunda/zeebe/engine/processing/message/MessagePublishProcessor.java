@@ -121,6 +121,7 @@ public final class MessagePublishProcessor implements TypedRecordProcessor<Messa
 
   private void correlateToSubscriptions(final long messageKey, final MessageRecord message) {
     subscriptionState.visitSubscriptions(
+        message.getTenantId(),
         message.getNameBuffer(),
         message.getCorrelationKeyBuffer(),
         subscription -> {
