@@ -418,11 +418,10 @@ public final class DbMessageState implements MutableMessageState {
   }
 
   @Override
-  public boolean exist(
-      final DirectBuffer name, final DirectBuffer correlationKey, final DirectBuffer messageId) {
-    messageName.wrapBuffer(name);
-    this.correlationKey.wrapBuffer(correlationKey);
-    this.messageId.wrapBuffer(messageId);
+  public boolean exist(final MessageRecord messageRecord) {
+    messageName.wrapBuffer(messageRecord.getNameBuffer());
+    correlationKey.wrapBuffer(messageRecord.getCorrelationKeyBuffer());
+    messageId.wrapBuffer(messageRecord.getMessageIdBuffer());
 
     return messageIdColumnFamily.exists(nameCorrelationMessageIdKey);
   }

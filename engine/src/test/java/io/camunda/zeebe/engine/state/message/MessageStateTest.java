@@ -44,8 +44,8 @@ public final class MessageStateTest {
     messageState.put(1L, message);
 
     // when
-    final boolean exist =
-        messageState.exist(wrapString("otherName"), wrapString("correlationKey"), wrapString("id"));
+    message.setName("otherName");
+    final boolean exist = messageState.exist(message);
 
     // then
     assertThat(exist).isFalse();
@@ -58,8 +58,8 @@ public final class MessageStateTest {
     messageState.put(1L, message);
 
     // when
-    final boolean exist =
-        messageState.exist(wrapString("name"), wrapString("otherCorrelationKey"), wrapString("id"));
+    message.setCorrelationKey("otherCorrelationKey");
+    final boolean exist = messageState.exist(message);
 
     // then
     assertThat(exist).isFalse();
@@ -72,9 +72,8 @@ public final class MessageStateTest {
     messageState.put(1L, message);
 
     // when
-    final boolean exist =
-        messageState.exist(
-            wrapString("name"), wrapString("otherCorrelationKey"), wrapString("otherId"));
+    message.setMessageId("otherId");
+    final boolean exist = messageState.exist(message);
 
     // then
     assertThat(exist).isFalse();
@@ -87,8 +86,7 @@ public final class MessageStateTest {
     messageState.put(1L, message);
 
     // when
-    final boolean exist =
-        messageState.exist(wrapString("name"), wrapString("correlationKey"), wrapString("id"));
+    final boolean exist = messageState.exist(message);
 
     // then
     assertThat(exist).isTrue();
@@ -354,9 +352,7 @@ public final class MessageStateTest {
     assertThat(keys).isEmpty();
 
     // and
-    final boolean exist =
-        messageState.exist(
-            wrapString("messageName"), wrapString("correlationKey"), wrapString("id"));
+    final boolean exist = messageState.exist(message);
     assertThat(exist).isFalse();
 
     // and
@@ -415,9 +411,7 @@ public final class MessageStateTest {
     assertThat(keys).isEmpty();
 
     // and
-    final boolean exist =
-        messageState.exist(
-            wrapString("messageName"), wrapString("correlationKey"), wrapString("id"));
+    final boolean exist = messageState.exist(message);
     assertThat(exist).isFalse();
   }
 
@@ -452,8 +446,7 @@ public final class MessageStateTest {
     assertThat(keys).hasSize(1).contains(1L);
 
     // and
-    final boolean exist =
-        messageState.exist(wrapString("name"), wrapString("correlationKey"), wrapString("id1"));
+    final boolean exist = messageState.exist(message);
     assertThat(exist).isTrue();
 
     // and

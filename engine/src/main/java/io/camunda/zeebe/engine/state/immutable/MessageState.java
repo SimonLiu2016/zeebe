@@ -8,6 +8,7 @@
 package io.camunda.zeebe.engine.state.immutable;
 
 import io.camunda.zeebe.engine.state.message.StoredMessage;
+import io.camunda.zeebe.protocol.impl.record.value.message.MessageRecord;
 import org.agrona.DirectBuffer;
 
 public interface MessageState {
@@ -39,7 +40,13 @@ public interface MessageState {
   boolean visitMessagesWithDeadlineBeforeTimestamp(
       long timestamp, final Index startAt, ExpiredMessageVisitor visitor);
 
-  boolean exist(DirectBuffer name, DirectBuffer correlationKey, DirectBuffer messageId);
+  /**
+   * Checks if a message exists in the state
+   *
+   * @param messageRecord the message to check
+   * @return a boolean indicating if the message exists
+   */
+  boolean exist(MessageRecord messageRecord);
 
   /**
    * Index to point to a specific position in the messages with deadline column family.
