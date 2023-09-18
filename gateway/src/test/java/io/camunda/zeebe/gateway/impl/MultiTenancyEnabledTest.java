@@ -18,9 +18,13 @@ import com.google.protobuf.ByteString;
 import io.camunda.identity.sdk.tenants.dto.Tenant;
 import io.camunda.zeebe.auth.impl.Authorization;
 import io.camunda.zeebe.gateway.api.deployment.DeployResourceStub;
+import io.camunda.zeebe.gateway.api.job.ActivateJobsStub;
 import io.camunda.zeebe.gateway.api.process.CreateProcessInstanceStub;
 import io.camunda.zeebe.gateway.api.util.GatewayTest;
 import io.camunda.zeebe.gateway.impl.broker.request.BrokerExecuteCommand;
+import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.ActivateJobsRequest;
+import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.ActivateJobsResponse;
+import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.ActivatedJob;
 import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.CreateProcessInstanceRequest;
 import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.CreateProcessInstanceResponse;
 import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.DecisionMetadata;
@@ -31,6 +35,7 @@ import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.DeployResourceRespons
 import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.ProcessMetadata;
 import io.camunda.zeebe.protocol.record.value.TenantOwned;
 import io.grpc.Status;
+import java.util.Iterator;
 import java.util.List;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.Before;
@@ -46,6 +51,7 @@ public class MultiTenancyEnabledTest extends GatewayTest {
   public void setup() {
     new DeployResourceStub().registerWith(brokerClient);
     new CreateProcessInstanceStub().registerWith(brokerClient);
+    new ActivateJobsStub().registerWith(brokerClient);
   }
 
   private void assertThatTenantIdsSet(
@@ -72,7 +78,7 @@ public class MultiTenancyEnabledTest extends GatewayTest {
     assertThatThrownBy(requestCallable)
         .is(statusRuntimeExceptionWithStatusCode(Status.INVALID_ARGUMENT.getCode()))
         .hasMessageContaining(
-            "Expected to handle gRPC request " + name + " with tenant identifier ``")
+            "Expected to handle gRPC request " + name + " with tenant identifier ''")
         .hasMessageContaining("but no tenant identifier was provided");
   }
 
@@ -81,7 +87,7 @@ public class MultiTenancyEnabledTest extends GatewayTest {
     assertThatThrownBy(requestCallable)
         .is(statusRuntimeExceptionWithStatusCode(Status.PERMISSION_DENIED.getCode()))
         .hasMessageContaining(
-            "Expected to handle gRPC request " + name + " with tenant identifier `tenant-c`")
+            "Expected to handle gRPC request " + name + " with tenant identifier 'tenant-c'")
         .hasMessageContaining("but tenant is not authorized to perform this request");
   }
 
@@ -212,5 +218,60 @@ public class MultiTenancyEnabledTest extends GatewayTest {
 
     // then
     assertThat(response.getTenantId()).isEqualTo("tenant-b");
+  }
+
+  @Test
+  public void activateJobsRequestShouldContainAuthorizedTenantIds() {
+    // given
+    when(gateway.getIdentityMock().tenants().forToken(anyString()))
+        .thenReturn(List.of(new Tenant("tenant-a", "A"), new Tenant("tenant-b", "B")));
+
+    // when
+    final Iterator<ActivateJobsResponse> response =
+        client.activateJobs(ActivateJobsRequest.newBuilder().addTenantIds("tenant-b").build());
+    assertThat(response.hasNext()).isTrue();
+
+    // then
+    assertThatTenantIdsSet("tenant-b", List.of("tenant-a", "tenant-b"));
+  }
+
+  @Test
+  public void activateJobsRequestRequiresTenantIds() {
+    // given
+    when(gateway.getIdentityMock().tenants().forToken(anyString()))
+        .thenReturn(List.of(new Tenant("tenant-a", "A"), new Tenant("tenant-b", "B")));
+    final var request = ActivateJobsRequest.newBuilder().build();
+
+    // when/then
+    assertThatRejectsRequestMissingTenantId(() -> client.activateJobs(request), "ActivateJobs");
+  }
+
+  @Test
+  public void activateJobsRequestRequiresValidTenantIds() {
+    // given
+    when(gateway.getIdentityMock().tenants().forToken(anyString()))
+        .thenReturn(List.of(new Tenant("tenant-a", "A"), new Tenant("tenant-b", "B")));
+    final var request = ActivateJobsRequest.newBuilder().addTenantIds("tenant-c").build();
+
+    // when/then
+    assertThatRejectsUnauthorizedRequest(() -> client.activateJobs(request), "ActivateJobs");
+  }
+
+  @Test
+  public void activateJobsResponseHasTenantIds() {
+    // given
+    when(gateway.getIdentityMock().tenants().forToken(anyString()))
+        .thenReturn(List.of(new Tenant("tenant-a", "A"), new Tenant("tenant-b", "B")));
+
+    // when
+    final Iterator<ActivateJobsResponse> responses =
+        client.activateJobs(ActivateJobsRequest.newBuilder().addTenantIds("tenant-b").build());
+    assertThat(responses.hasNext()).isTrue();
+
+    // then
+    final ActivateJobsResponse response = responses.next();
+    for (final ActivatedJob activatedJob : response.getJobsList()) {
+      assertThat(activatedJob.getTenantId()).isEqualTo("tenant-b");
+    }
   }
 }
