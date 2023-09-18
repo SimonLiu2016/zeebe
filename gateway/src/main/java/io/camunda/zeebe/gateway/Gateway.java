@@ -275,10 +275,11 @@ public final class Gateway implements CloseableSilently {
   }
 
   private ActivateJobsHandler buildActivateJobsHandler(final BrokerClient brokerClient) {
+    final boolean isMultiTenancyEnabled = gatewayCfg.getMultiTenancy().isEnabled();
     if (gatewayCfg.getLongPolling().isEnabled()) {
       return buildLongPollingHandler(brokerClient);
     } else {
-      return new RoundRobinActivateJobsHandler(brokerClient);
+      return new RoundRobinActivateJobsHandler(brokerClient, isMultiTenancyEnabled);
     }
   }
 

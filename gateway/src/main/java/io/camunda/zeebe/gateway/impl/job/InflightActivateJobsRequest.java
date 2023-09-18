@@ -7,15 +7,21 @@
  */
 package io.camunda.zeebe.gateway.impl.job;
 
+import io.camunda.zeebe.auth.api.JwtAuthorizationBuilder;
+import io.camunda.zeebe.auth.impl.Authorization;
 import io.camunda.zeebe.gateway.Loggers;
 import io.camunda.zeebe.gateway.RequestMapper;
 import io.camunda.zeebe.gateway.grpc.ServerStreamObserver;
 import io.camunda.zeebe.gateway.impl.broker.request.BrokerActivateJobsRequest;
+import io.camunda.zeebe.gateway.interceptors.impl.IdentityInterceptor;
 import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.ActivateJobsRequest;
 import io.camunda.zeebe.gateway.protocol.GatewayOuterClass.ActivateJobsResponse;
+import io.camunda.zeebe.protocol.record.value.TenantOwned;
 import io.camunda.zeebe.scheduler.ScheduledTimer;
 import io.camunda.zeebe.util.Either;
+import io.grpc.Context;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;
 
@@ -34,6 +40,7 @@ public class InflightActivateJobsRequest {
   private boolean isTimedOut;
   private boolean isCompleted;
   private boolean isAborted;
+  private final boolean isMultiTenancyEnabled;
 
   public InflightActivateJobsRequest(
       final long requestId,
@@ -46,7 +53,23 @@ public class InflightActivateJobsRequest {
         request.getType(),
         request.getWorker(),
         request.getMaxJobsToActivate(),
-        request.getRequestTimeout());
+        request.getRequestTimeout(), false);
+  }
+
+  public InflightActivateJobsRequest(
+      final long requestId,
+      final ActivateJobsRequest request,
+      final ServerStreamObserver<ActivateJobsResponse> responseObserver,
+      final boolean isMultiTenancyEnabled) {
+    this(
+        requestId,
+        RequestMapper.toActivateJobsRequest(request),
+        responseObserver,
+        request.getType(),
+        request.getWorker(),
+        request.getMaxJobsToActivate(),
+        request.getRequestTimeout(),
+        isMultiTenancyEnabled);
   }
 
   private InflightActivateJobsRequest(
@@ -56,7 +79,8 @@ public class InflightActivateJobsRequest {
       final String jobType,
       final String worker,
       final int maxJobsToActivate,
-      final long longPollingTimeout) {
+      final long longPollingTimeout,
+      final boolean isMultiTenancyEnabled) {
     this.requestId = requestId;
     this.request = request;
     this.responseObserver = responseObserver;
@@ -65,6 +89,8 @@ public class InflightActivateJobsRequest {
     this.maxJobsToActivate = maxJobsToActivate;
     this.longPollingTimeout =
         longPollingTimeout == 0 ? null : Duration.ofMillis(longPollingTimeout);
+    this.isMultiTenancyEnabled = isMultiTenancyEnabled;
+    setAuthorization();
   }
 
   public void complete() {
@@ -180,6 +206,25 @@ public class InflightActivateJobsRequest {
     if (hasScheduledTimer()) {
       scheduledTimer.cancel();
       scheduledTimer = null;
+    }
+  }
+
+  private void setAuthorization() {
+    try {
+      final List<String> authorizedTenants = isMultiTenancyEnabled
+          ? Context.current().call(IdentityInterceptor.AUTHORIZED_TENANTS_KEY::get)
+          : List.of(TenantOwned.DEFAULT_TENANT_IDENTIFIER);
+
+      final String authorizationToken =
+          Authorization.jwtEncoder()
+              .withIssuer(JwtAuthorizationBuilder.DEFAULT_ISSUER)
+              .withAudience(JwtAuthorizationBuilder.DEFAULT_AUDIENCE)
+              .withSubject(JwtAuthorizationBuilder.DEFAULT_SUBJECT)
+              .withClaim(Authorization.AUTHORIZED_TENANTS, authorizedTenants)
+              .encode();
+      request.setAuthorization(authorizationToken);
+    } catch (final Exception e) {
+      responseObserver.onError(e);
     }
   }
 
