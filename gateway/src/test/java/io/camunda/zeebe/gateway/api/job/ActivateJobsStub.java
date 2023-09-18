@@ -16,6 +16,7 @@ import io.camunda.zeebe.gateway.impl.broker.response.BrokerResponse;
 import io.camunda.zeebe.protocol.Protocol;
 import io.camunda.zeebe.protocol.impl.encoding.MsgPackConverter;
 import io.camunda.zeebe.protocol.impl.record.value.job.JobBatchRecord;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.LongStream;
@@ -106,7 +107,8 @@ public class ActivateJobsStub
         partitionId,
         requestDto.getMaxJobsToActivate(),
         requestDto.getTypeBuffer(),
-        requestDto.getWorkerBuffer());
+        requestDto.getWorkerBuffer(),
+        requestDto.getTenantIds());
 
     return new BrokerResponse<>(
         response, partitionId, Protocol.encodePartitionId(partitionId, JOB_BATCH_KEY));
@@ -121,7 +123,8 @@ public class ActivateJobsStub
       final int partitionId,
       final int amount,
       final DirectBuffer type,
-      final DirectBuffer worker) {
+      final DirectBuffer worker,
+      final List<String> tenantIds) {
 
     final int availableAmount = availableJobs.computeIfAbsent(bufferAsString(type), k -> 0);
     final int jobsToActivate = Math.min(amount, availableAmount);
@@ -144,7 +147,8 @@ public class ActivateJobsStub
                   .setProcessDefinitionVersion(PROCESS_DEFINITION_VERSION)
                   .setProcessDefinitionKey(PROCESS_KEY)
                   .setElementId(ELEMENT_ID)
-                  .setElementInstanceKey(ELEMENT_INSTANCE_KEY);
+                  .setElementInstanceKey(ELEMENT_INSTANCE_KEY)
+                  .setTenantId(tenantIds.get(0));
             });
   }
 
