@@ -15,6 +15,7 @@
 
 
   <properties>
+    <!--suppress UnresolvedMavenProperty -->
     <paths.certificates>${project.build.testResources[0].directory}/certs/</paths.certificates>
   </properties>
 
